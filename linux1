@@ -1,0 +1,88 @@
+NXP が提供する i.MX 8M Plus (iMX8MP) 用 Yocto プロジェクトを基に、カスタムのシングルボードコンピュータ (SBC) 向けの Linux Yocto システムを構築するための手順を以下に詳述します。
+
+1. 開発環境の設定
+
+まず、開発環境を正しくセットアップする必要があります。以下のツールが必要です：
+
+	•	OS：Ubuntu 18.04 または 20.04（Yocto の推奨環境）
+	•	必須ツール：以下の依存パッケージをインストール
+
+sudo apt-get update
+sudo apt-get install gawk wget git-core diffstat unzip texinfo gcc-multilib \
+     build-essential chrpath socat libsdl1.2-dev xterm
+
+
+	•	Yocto ツールチェーン：repo ツールをインストールして、Yocto のソースコードを管理します。
+
+2. NXP Yocto プロジェクトコードの取得
+
+NXP は、i.MX シリーズプロセッサ向けの Yocto BSP（Board Support Package）を提供しています。NXP の公式リポジトリから Yocto BSP プロジェクトを取得します。
+
+mkdir imx-yocto-bsp
+cd imx-yocto-bsp
+repo init -u https://github.com/nxp-imx/imx-manifest -b imx-linux-hardknott -m imx-5.10.72-2.2.0.xml
+repo sync
+
+注意：-b imx-linux-hardknott は Yocto Hardknott バージョンを示し、必要に応じて他のブランチを選択できます（例：kirkstone）。imx-5.10.72-2.2.0.xml は BSP バージョンに対応する XML ファイルです。
+
+3. Yocto 環境の設定
+
+NXP が提供する setup-environment スクリプトを使ってビルド環境をセットアップします。
+
+DISTRO=fsl-imx-xwayland MACHINE=imx8mp-var-dart source imx-setup-release.sh -b build
+
+	•	DISTRO=fsl-imx-xwayland：NXP が提供する GUI 対応のディストリビューションです。
+	•	MACHINE=imx8mp-var-dart：これは i.MX8M Plus を搭載した開発ボードの一例です。ご自身のボードに合わせてこのパラメータを変更してください。
+
+4. カスタムボードのサポートを追加・変更
+
+i.MX8MP ベースのカスタムボードに対応するため、以下の内容をカスタマイズする必要があります。
+
+4.1. カスタム MACHINE 設定の定義
+
+meta-freescale またはカスタムの meta-layer 内に、新しい MACHINE 設定を追加します。
+
+新しい conf/machine/your-board.conf ファイルを作成し、他の i.MX8MP ボードの設定（例：imx8mp-var-dart.conf）を参考に、適切に修正します。例えば：
+
+MACHINEOVERRIDES =. "imx8mp:"
+
+# カーネルとデバイスツリーの設定
+KERNEL_DEVICETREE = "imx8mp-your-board.dtb"
+
+# U-Boot 設定
+UBOOT_CONFIG = "your_board_defconfig"
+
+4.2. デバイスツリーの変更
+
+デバイスツリー（Device Tree）は、ハードウェアプラットフォームを記述する重要なファイルです。NXP のデバイスツリーファイルをベースに、カスタムボード向けに修正します。
+
+	•	arch/arm64/boot/dts/freescale/imx8mp-var-dart.dts ファイルを見つけ、それをコピーしてボードの GPIO ピンやペリフェラルの設定を修正します。
+	•	修正後のデバイスツリーファイルは imx8mp-your-board.dts と命名します。
+
+4.3. U-Boot の設定
+
+特定の起動要件がある場合は、U-Boot の設定を変更します。
+
+	•	configs/ ディレクトリ内の類似の設定ファイル（例：imx8mp_var_dart_defconfig）を見つけ、必要に応じて修正し、your_board_defconfig として保存します。
+	•	MACHINE 設定で適切な U-Boot 設定ファイルを指定していることを確認します。
+
+5. Yocto イメージのビルド
+
+デバイスツリーやカーネル、U-Boot の変更が完了したら、Yocto イメージをビルドします。
+
+bitbake core-image-minimal
+
+	•	core-image-minimal は基本的なイメージです。用途に応じて core-image-sato や fsl-image-validation-imx なども選択できます。
+
+6. イメージの書き込み
+
+ビルド完了後、イメージファイルは build/tmp/deploy/images/your-board/ ディレクトリに生成されます。dd や Balena Etcher などのツールを使用して、SD カードや eMMC にイメージを書き込みます。
+
+sudo dd if=core-image-minimal-imx8mp-your-board.wic of=/dev/sdX bs=4M
+sync
+
+7. デバッグと検証
+
+SD カードをボードに挿入し、起動して動作を確認します。シリアルコンソールやネットワークを介してデバッグできます。必要に応じてカーネル設定やデバイスツリー、U-Boot をさらに調整してください。
+
+これは、Yocto プロジェクトの基本的なカスタマイズフローです。特に、デバイスツリーと MACHINE 設定が重要になります。NXP のドキュメントや meta-freescale レイヤーには既に多くの参考例が含まれているので、それらを活用して自分のボードに合うように変更します。
